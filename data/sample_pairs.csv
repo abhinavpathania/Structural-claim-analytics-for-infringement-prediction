@@ -1,0 +1,6 @@
+pair_id,claim_text,product_text,label
+1,"A system configured to transmit data to a remote server and process received signals.","The device processes input signals and sends data to a cloud server.",1
+2,"A processor adapted to detect motion and generate alerts.","The camera detects movement and sends notification alerts.",1
+3,"A memory module storing encrypted authentication keys.","The speaker streams music over Bluetooth.",0
+4,"A method for synchronizing data between two servers.","The application updates local data with cloud storage.",1
+5,"A hardware interface configured for voltage regulation.","The software dashboard displays analytics reports.",0
