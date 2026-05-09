@@ -1,0 +1,53 @@
+{
+  "cv_f1_scores": [
+    0.9931623931623932,
+    0.9922613929492692,
+    0.993127147766323
+  ],
+  "test_report": {
+    "0": {
+      "precision": 0.9894179894179894,
+      "recall": 0.9973333333333333,
+      "f1-score": 0.9933598937583001,
+      "support": 750.0
+    },
+    "1": {
+      "precision": 0.9973118279569892,
+      "recall": 0.9893333333333333,
+      "f1-score": 0.9933065595716198,
+      "support": 750.0
+    },
+    "accuracy": 0.9933333333333333,
+    "macro avg": {
+      "precision": 0.9933649086874894,
+      "recall": 0.9933333333333333,
+      "f1-score": 0.9933332266649599,
+      "support": 1500.0
+    },
+    "weighted avg": {
+      "precision": 0.9933649086874893,
+      "recall": 0.9933333333333333,
+      "f1-score": 0.9933332266649599,
+      "support": 1500.0
+    }
+  },
+  "test_auc": 0.999592,
+  "feature_columns": [
+    "claim_word_count",
+    "claim_token_count",
+    "claim_clause_markers",
+    "claim_dep_depth_max",
+    "claim_dep_depth_mean",
+    "claim_func_verb_density",
+    "claim_struct_noun_density",
+    "claim_abstraction_score",
+    "claim_means_plus_function",
+    "claim_interaction_density",
+    "prod_token_count",
+    "prod_component_terms",
+    "prod_interaction_terms",
+    "prod_functional_terms",
+    "prod_functional_density",
+    "semantic_similarity"
+  ]
+}
