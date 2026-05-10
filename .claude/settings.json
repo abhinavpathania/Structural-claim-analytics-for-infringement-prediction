@@ -14,7 +14,13 @@
       "Bash(pip list *)",
       "Bash(findstr hf *)",
       "Bash(pip uninstall *)",
-      "Bash(pip install *)"
+      "Bash(pip install *)",
+      "Bash(findstr -i \"flask|fastapi|streamlit\")",
+      "Bash(python -m streamlit run app.py --server.port 8501)",
+      "Bash(curl -s http://localhost:8501)",
+      "Bash(python -c \"from pathlib import Path; p = Path\\('c:/Users/patha/Structural-claim-analytics-for-infringement-prediction/app.py'\\).resolve\\(\\); print\\('parents[0]:', p.parents[0]\\); print\\('parents[1]:', p.parents[1]\\)\")",
+      "Bash(python -c \"from pathlib import Path; p = Path\\('c:/Users/patha/Structural-claim-analytics-for-infringement-prediction/models/risk_model.joblib'\\); print\\('Exists:', p.exists\\(\\)\\)\")",
+      "Bash(python -c \"from pathlib import Path; import os; os.chdir\\('c:/Users/patha/Structural-claim-analytics-for-infringement-prediction'\\); p = Path\\('app.py'\\).resolve\\(\\).parents[0] / 'models' / 'risk_model.joblib'; print\\('Path:', p\\); print\\('Exists:', p.exists\\(\\)\\)\")"
     ]
   }
 }
