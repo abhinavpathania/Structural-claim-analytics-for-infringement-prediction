@@ -1,0 +1,463 @@
+================================================================================
+STRUCTURAL CLAIM ANALYTICS FOR INFRINGEMENT PREDICTION - PPT REFERENCE GUIDE
+================================================================================
+
+This document contains all information needed for the PowerPoint presentation.
+It covers the project overview, architecture, features, SHAP explainer, frontend
+elements, model details, and test cases.
+
+================================================================================
+SECTION 1: PROJECT OVERVIEW
+================================================================================
+
+TITLE: Structural Claim Analytics for Infringement Prediction
+
+OBJECTIVE:
+Develop a machine learning system to predict patent infringement risk by
+analyzing structural and semantic features of patent claims against product
+descriptions.
+
+KEY COMPONENTS:
+- ML Model: XGBoost Regressor with isotonic calibration
+- Feature Engineering: 45+ features capturing claim structure, language patterns,
+  domain overlap, and semantic similarity
+- Explainability: SHAP (SHapley Additive exPlanations) for feature importance
+- Frontend: Streamlit web application for interactive analysis
+
+================================================================================
+SECTION 2: TECHNICAL ARCHITECTURE
+================================================================================
+
+TECHNOLOGY STACK:
+- Backend: Python (scikit-learn, XGBoost, spaCy, SentenceTransformers)
+- Frontend: Streamlit
+- ML Framework: XGBoost with sklearn Pipeline
+- NLP: spaCy (en_core_web_sm), Sentence-BERT (all-MiniLM-L6-v2)
+- Explainability: SHAP (TreeExplainer)
+
+PIPELINE:
+Input (Claim + Product) → FeatureBuilder → Feature Vector (45 features)
+→ XGBoost Pipeline (StandardScaler → XGBRegressor) → Isotonic Calibration
+→ Risk Score (0-100%)
+
+================================================================================
+SECTION 3: FEATURE ENGINEERING - test_features.py DETAILS
+================================================================================
+
+The system extracts features from patent claims and product descriptions.
+
+DOMAINS (5 technical domains):
+1. data_sync - data synchronization systems
+   - Components: server, client, database, processor, memory, network interface, controller
+   - Actions: synchronize, transmit, receive, update, process, store, send
+   - Objects: record, message, event, packet, state
+
+2. motion_alert - motion detection and alert systems
+   - Components: sensor, camera, processor, wireless module, memory, circuit
+   - Actions: detect, generate, transmit, receive, process, store, monitor
+   - Objects: motion, frame, alert, signal, event
+
+3. auth_security - authentication and security systems
+   - Components: processor, memory, secure module, server, interface
+   - Actions: authenticate, encrypt, decrypt, store, verify, transmit
+   - Objects: key, token, credential, request, response
+
+4. power_hw - power management hardware
+   - Components: circuit, voltage regulator, power module, sensor, controller
+   - Actions: regulate, monitor, convert, control, process
+   - Objects: voltage, current, power state, signal
+
+5. analytics_ui - analytics and user interface systems
+   - Components: dashboard, application, ui module, report engine, database
+   - Actions: render, display, generate, aggregate, process, store
+   - Objects: chart, report, metric, dashboard, result
+
+OUT-OF-DOMAIN VOCABULARIES (for true negatives):
+- pharmaceutical, construction, ecommerce, finance, marketing, food, textiles, agriculture
+
+CLAIM FEATURES (from claim_text):
+1. claim_word_count - number of words
+2. claim_token_count - number of tokens (spaCy)
+3. claim_clause_markers - count of "wherein", "whereby", "such that", etc.
+4. claim_dep_depth_max - maximum dependency parsing tree depth
+5. claim_dep_depth_mean - mean dependency tree depth
+6. claim_func_verb_density - ratio of functional verbs (transmit, process, detect, etc.)
+7. claim_struct_noun_density - ratio of structural nouns (server, processor, etc.)
+8. claim_abstraction_score - count of abstraction patterns
+9. claim_means_plus_function - binary flag for "means for" language
+10. claim_interaction_density - density of interaction terms (communicate, transmit, etc.)
+11. claim_unique_nouns - count of unique structural nouns
+12. claim_abstractness - computed abstractness (0=concrete, 1=abstract)
+13. claim_domain_score - confidence of domain detection
+
+PRODUCT FEATURES (from product_text):
+1. prod_token_count - number of tokens
+2. prod_component_terms - count of structural nouns
+3. prod_interaction_terms - count of interaction verbs
+4. prod_functional_terms - count of functional verbs
+5. prod_functional_density - ratio of functional terms
+6. prod_unique_nouns - count of unique structural nouns
+7. product_domain_score - confidence of domain detection
+
+CROSS-PAIR FEATURES:
+1. semantic_similarity - Sentence-BERT cosine similarity (0-1)
+2. same_domain - binary flag (1 if both detected same domain)
+3. domain_overlap_count - number of overlapping domains
+4. any_domain_overlap - binary for any domain match
+5. domain_mismatch_penalty - penalty when domains don't match
+6. neither_domain_detected - flag for non-technical texts
+7. short_neither_penalty - penalty for short generic texts
+8. noun_jaccard - Jaccard similarity of structural nouns
+9. noun_overlap_count - count of matching structural nouns
+10. noun_overlap_claim - ratio of claim nouns found in product
+11. noun_overlap_prod - ratio of product nouns found in claim
+12. all_noun_jaccard - Jaccard of all nouns (not just structural)
+13. bigram_jaccard - Jaccard of 2-word ngrams
+14. trigram_jaccard - Jaccard of 3-word ngrams
+15. len_ratio - claim_length / product_length
+16. len_diff_norm - normalized length difference
+17. abs_alignment - alignment of abstraction levels
+18. abs_diff - absolute abstraction difference
+19. complexity_balance - claim_complexity - product_detail
+20. ood_keyword_ratio - ratio of out-of-domain keywords
+
+KEY PATTERNS USED:
+
+ABSTRACTION_PATTERNS:
+- "configured to", "adapted to", "operable to", "arranged to", "for performing",
+- "comprising", "including", "operably coupled", "remote", "predetermined"
+
+FUNCTION_VERBS (from STRUCTURAL_NOUNS):
+- transmit, process, detect, generate, receive, store, execute, send,
+- synchronize, update, encrypt, decrypt, authenticate, compute, encode, decode,
+- route, schedule, allocate, verify, convert, regulate, monitor, control,
+- render, display, aggregate
+
+STRUCTURAL_NOUNS:
+- server, client, database, processor, memory, interface, controller, network,
+- bus, engine, module, sensor, camera, device, chip, antenna, regulator,
+- dashboard, application, unit, circuit, keypad, screen, buffer, transmitter
+
+CLAUSE_MARKERS:
+- wherein, whereby, such that, in response to, based on, according to
+
+INTERACTION_PATTERNS:
+- communicate, transmit, send, receive, synchronize, update, connect, couple
+
+================================================================================
+SECTION 4: SHAP EXPLAINER - HOW IT WORKS
+================================================================================
+
+WHAT IS SHAP?
+SHAP (SHapley Additive exPlanations) is a game-theoretic approach to explain
+the output of any machine learning model. It computes the contribution of each
+feature to the prediction.
+
+HOW IT WORKS IN THIS PROJECT:
+
+1. BASE VALUE (Expected Value):
+   - The average model output over the training dataset
+   - Represents the starting point before any features are considered
+   - For XGBoost: regressor.base_score (typically ~50 for risk scores)
+   - Fallback: 50.0 if base_score not available
+
+2. SHAP VALUES COMPUTATION:
+   - Uses TreeExplainer for XGBoost models (optimized for tree-based models)
+   - Computed as: explainer.shap_values(X_scaled)[0]
+   - Each feature gets a SHAP value: positive (increases score) or negative
+     (decreases score)
+   - Sum of all SHAP values + base_value = final prediction
+
+3. FEATURE IMPORTANCE:
+   - Top features are sorted by absolute SHAP value magnitude
+   - Shows which features had the biggest impact on the prediction
+   - Displayed as bar charts and raw values
+
+4. FEATURE GROUPS:
+   The 45 features are grouped into 5 categories for summary:
+
+   "Claim -- structure":
+   - claim_word_count, claim_token_count, claim_dep_depth_max, claim_dep_depth_mean
+
+   "Claim -- language":
+   - claim_clause_markers, claim_abstraction_score, claim_means_plus_function,
+   - claim_func_verb_density, claim_struct_noun_density, claim_interaction_density
+
+   "Product -- structure":
+   - prod_token_count, prod_component_terms, prod_functional_terms
+
+   "Product -- language":
+   - prod_interaction_terms, prod_functional_density
+
+   "Cross-pair similarity":
+   - semantic_similarity
+
+5. GROUPED CONTRIBUTION:
+   - Sums absolute SHAP values within each group
+   - Shows which aspect of the claim-product pair most influenced the score
+   - Useful for high-level interpretation
+
+SHAP EXPLANATION OUTPUT:
+- base_value: Starting prediction value
+- prediction: Final calibrated risk score
+- shap_values: Dict of top 8 features with individual contributions
+- grouped_shap: Dict of 5 groups with summed contributions
+
+INTERPRETATION:
+- Positive SHAP value → pushes score higher (increases risk)
+- Negative SHAP value → pushes score lower (decreases risk)
+- Large absolute value → strong influence on prediction
+- Example: semantic_similarity=+3.2 means this feature increased risk by 3.2%
+
+================================================================================
+SECTION 5: MODEL TRAINING DETAILS
+================================================================================
+
+MODEL ARCHITECTURE:
+- Pipeline: StandardScaler → XGBRegressor
+- XGBoost Parameters:
+  - n_estimators: 500
+  - learning_rate: 0.05
+  - max_depth: 7
+  - subsample: 0.9
+  - colsample_bytree: 0.9
+  - reg_lambda: 1.0
+
+TRAINING PROCESS:
+1. Data loaded from synthetic_pairs_5k.csv (5000 samples)
+2. Features extracted using FeatureBuilder
+3. 70-30 train-test split (random_state=42)
+4. 5-Fold Cross-Validation on training set
+5. XGBoost trained on full training set
+6. Isotonic Regression calibration on held-out portion
+
+CALIBRATION:
+- IsotonicRegression (y_min=0, y_max=100, out_of_bounds="clip")
+- Fitted on out-of-sample predictions to correct systematic bias
+- Final model selected based on MAE comparison
+
+MODEL PERFORMANCE (from train_report.json):
+- Cross-Validation RMSE: 16.55 (+/- 0.35)
+- Cross-Validation R2: 0.728 (+/- 0.019)
+- Cross-Validation MAE: 11.04 (+/- 0.26)
+- Test MAE: 11.33
+- Test RMSE: 17.53
+- Test R2: 0.702
+- Calibrator: isotonic
+
+PREDICTION DISTRIBUTION:
+- 0-20%: 734 predictions
+- 21-50%: 151 predictions
+- 51-75%: 486 predictions
+- 76-100%: 129 predictions
+
+================================================================================
+SECTION 6: FRONTEND ELEMENTS (Streamlit App - app.py)
+================================================================================
+
+All visible UI elements that need to be explained to evaluators:
+
+MAIN PAGE:
+1. Title: "⚖️ Patent Infringement Risk Analyzer"
+2. Description text explaining the purpose
+
+INPUT SECTION:
+- Text Area 1: "📜 Patent Claim" - Enter patent claim text (placeholder example provided)
+- Text Area 2: "🏭 Product Description" - Enter product description (placeholder example provided)
+
+OPTIONS:
+- Checkbox: "Show Feature Details" (default: True)
+- Checkbox: "Show SHAP Explanation" (default: False)
+
+ACTION:
+- Button: "🔍 Analyze Risk" (primary, full width)
+
+OUTPUT ELEMENTS (shown after prediction):
+
+1. METRICS ROW (3 columns):
+   - Risk Score: shows percentage (e.g., "72.5%")
+   - Risk Category: shows colored emoji + text (e.g., "🟠 High Risk")
+   - Semantic Similarity: shows percentage (e.g., "85.2%")
+
+2. RISK GAUGE:
+   - Color gradient bar from green (0) to yellow (50) to orange (75) to red (100)
+   - Scale markers: 0, 20, 50, 75, 90, 100
+   - Large centered score display (48px font)
+   - Color changes based on score: green (0-50), yellow (50-75), orange/red (75+)
+
+3. FEATURE BREAKDOWN (if "Show Feature Details" enabled):
+   Two columns:
+   Column 1: "📝 Claim Features"
+   - Word Count
+   - Token Count
+   - Clause Markers
+   - Dependency Depth (Max)
+   - Functional Verb Density
+   - Structural Noun Density
+   - Abstraction Score
+   - Abstractness
+
+   Column 2: "🏭 Product Features"
+   - Token Count
+   - Component Terms
+   - Interaction Terms
+   - Functional Terms
+   - Functional Density
+
+   Three more columns:
+   Column 3: "🔗 Overlap Metrics"
+   - Semantic Similarity (percentage)
+   - Noun Jaccard
+   - Bigram Jaccard
+   - Trigram Jaccard
+
+   Column 4: "🎯 Domain Alignment"
+   - Same Domain (Yes/No)
+   - Domain Overlap (count)
+   - Domain Mismatch (Yes/No)
+   - Abstraction Alignment
+
+   Column 5: "📏 Length Metrics"
+   - Length Ratio
+   - Length Diff
+   - Complexity Balance
+
+4. SHAP EXPLANATION (if "Show SHAP Explanation" enabled):
+   - Section: "🔬 SHAP Feature Explanations"
+   - Two metrics: Base Score, Final Score
+   - Bar chart: "Top Contributing Features" showing feature names and contributions
+   - Data table: "Feature Groups" showing group names and summed contributions
+   - Expandable section: "View raw SHAP values" showing all top features with
+     directional arrows (↑ for positive, ↓ for negative) and exact values
+
+5. DISCLAIMER:
+   Warning text about the tool being for demonstration only
+
+6. EXAMPLE TEST CASES (collapsible section):
+   Table with different risk levels and example claim-product pairs
+
+RISK CATEGORIES (thresholds and colors):
+- Minimal Risk (0-20): 🟢 Green
+- Low Risk (20-50): 🟢 Green
+- Moderate Risk (50-75): 🟡 Yellow
+- High Risk (75-90): 🟠 Orange
+- Critical Risk (90-100): 🔴 Red
+
+================================================================================
+SECTION 7: TEST CASES (src/test_features.py)
+================================================================================
+
+The test_features.py module contains 20 test cases demonstrating model behavior:
+
+HIGH RISK CASES (expected score 55-85%):
+1. Direct structural match (data_sync) - High overlap server/processor
+2. Complete claim scope covered (auth_security) - Controller with all features
+3. Multiple structural nouns + interaction (motion_alert) - Sensor/camera/processor
+4. High overlap same domain (data_sync) - Database server/memory/network
+
+MEDIUM RISK CASES (expected score 5-75%):
+5. Cross-domain data_sync vs auth_security
+6. Cross-domain motion_alert vs analytics_ui
+7. Partial structural overlap, different domain
+8. Some structural matches, different function
+9. Means-plus-function claim (complex legal language)
+10. Multiple abstraction patterns
+11. Long claim, short product (same domain)
+12. Short claim, long product (same domain)
+13. Claim with no function verbs (composition)
+14. Claim with no structural nouns
+15. Clause markers in claim
+
+LOW RISK CASES (expected score 0-45%):
+16. Out-of-domain pharmaceutical vs data systems
+17. Out-of-domain cement vs ecommerce
+18. Generic product description (very short)
+19. No structural noun overlap
+
+BOUNDARY CASES (expected score 20-75%):
+20. Same structural nouns, different verbs
+21. Same verbs, different structural nouns
+22. High semantic similarity, low structural overlap
+
+RISK BANDS:
+- <=20: "Minimal"
+- 21-50: "Low"
+- 51-75: "Moderate"
+- 76-90: "High"
+- >90: "Critical"
+
+================================================================================
+SECTION 8: DATA GENERATION
+================================================================================
+
+Dataset: synthetic_pairs_5k.csv (5000 samples)
+
+GENERATION DISTRIBUTION:
+- 40% same domain (high-ish scores: 70-98%)
+- 25% cross-domain related (moderate: 5-40%)
+- 20% cross-domain unrelated (low: 0-18%)
+- 15% out-of-domain (very low: 0-12%)
+
+LABEL COMPUTATION LOGIC:
+- Same domain + aligned abstraction: 70-98%
+- Same domain + abstract claim, detailed product: 45-90%
+- Cross-domain related: 5-40%
+- Cross-domain unrelated: 0-18%
+- Out-of-domain: 0-12%
+
+================================================================================
+SECTION 9: KEY CONCEPTS TO EXPLAIN
+================================================================================
+
+1. WHY STRUCTURAL FEATURES?
+   - Patent claims define scope through structure (components, connections)
+   - Structural noun overlap indicates potential claim coverage
+   - Different domains have different typical structures
+
+2. WHY SEMANTIC SIMILARITY?
+   - Sentence-BERT captures meaning beyond exact words
+   - Can detect similar functionality even with different wording
+   - Complements structural matching
+
+3. WHY DOMAIN DETECTION?
+   - Same-domain claims/products more likely to infringe
+   - Cross-domain may have partial overlap
+   - Out-of-domain indicates no infringement risk
+
+4. WHY ABSTRACTION ALIGNMENT?
+   - Abstract claims (legal language) need detailed products for coverage
+   - Concrete claims (specific components) need matching structure
+   - Misaligned abstraction levels indicate different scope expectations
+
+5. WHY SHAP?
+   - Black-box model needs explanation for legal/compliance use
+   - Shows WHY a score was given, not just WHAT the score is
+   - Enables trust and verification by domain experts
+
+================================================================================
+SECTION 10: FILE STRUCTURE
+================================================================================
+
+Root Directory:
+- app.py                    → Streamlit frontend application
+- src/
+  - __init__.py
+  - config.py               → Configuration settings (paths, models, data)
+  - utils.py                → Logging utilities
+  - dataset.py              → CSV loading and feature table building
+  - dataset_generation.py   → Synthetic data generation (5000 pairs)
+  - feature_builder.py      → Feature extraction (45+ features)
+  - train.py                → Model training pipeline
+  - predict.py              → CLI prediction tool
+  - explain.py              → SHAP explanation module
+  - test_features.py        → Test cases (20 scenarios)
+- data/
+  - synthetic_pairs_5k.csv   → Training data
+- models/
+  - risk_model.joblib       → Trained model (Pipeline + Calibrator)
+- reports/
+  - train_report.json       → Training metrics and feature list
+
+================================================================================
+END OF PPT REFERENCE GUIDE
+================================================================================
