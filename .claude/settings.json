@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m src.test_features --shap)",
+      "Bash(python -c \"import sentence_transformers; print\\(sentence_transformers.__version__\\)\")",
+      "Bash(pip show *)",
+      "Bash(findstr Version)",
+      "PowerShell(python -m src.predict --claim \"A neural network apparatus\" --product \"A deep learning framework implementing multi-layer perceptrons\")",
+      "PowerShell(python -W ignore -m src.predict --claim \"A neural network apparatus\" --product \"A deep learning framework implementing multi-layer perceptrons\")",
+      "Bash(python -c \"import hf_transfer; print\\(hf_transfer.__version__\\)\")",
+      "Bash(python -c \"from huggingface_hub.utils._http import warning_msg; import inspect; print\\(inspect.getsourcefile\\(warning_msg\\)\\)\")",
+      "Bash(python -c \"from huggingface_hub.utils import logging; import inspect; print\\(inspect.getsourcefile\\(logging\\)\\)\")",
+      "Bash(python -c ' *)",
+      "Bash(pip list *)",
+      "Bash(findstr hf *)",
+      "Bash(pip uninstall *)",
+      "Bash(pip install *)"
+    ]
+  }
+}

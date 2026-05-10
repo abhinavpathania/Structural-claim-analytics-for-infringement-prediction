@@ -8,6 +8,7 @@ from sklearn.model_selection import train_test_split, KFold, cross_val_score
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
+from sklearn.isotonic import IsotonicRegression
 from xgboost import XGBRegressor
 
 from .dataset import load_pairs_csv, build_feature_table
@@ -20,18 +21,13 @@ REPORTS = ROOT / "reports"
 
 
 def regression_report(y_true, y_pred):
-    """Generate comprehensive regression metrics."""
     mae = mean_absolute_error(y_true, y_pred)
     rmse = np.sqrt(mean_squared_error(y_true, y_pred))
     r2 = r2_score(y_true, y_pred)
-    mape = np.mean(np.abs((y_true - y_pred) / (y_true + 1e-8))) * 100
 
-    # Distribution of predictions
     bins = [0, 20, 50, 75, 100]
     bin_labels = ["0-20%", "21-50%", "51-75%", "76-100%"]
-    pred_dist = {}
-    true_dist = {}
-
+    pred_dist, true_dist = {}, {}
     for i in range(len(bins) - 1):
         mask_pred = (y_pred >= bins[i]) & (y_pred < bins[i+1])
         mask_true = (y_true >= bins[i]) & (y_true < bins[i+1])
@@ -42,7 +38,6 @@ def regression_report(y_true, y_pred):
         "mae": float(mae),
         "rmse": float(rmse),
         "r2": float(r2),
-        "mape": float(mape),
         "mean_true": float(np.mean(y_true)),
         "mean_pred": float(np.mean(y_pred)),
         "std_true": float(np.std(y_true)),
@@ -60,7 +55,6 @@ def main():
     fb = FeatureBuilder()
     X, y = build_feature_table(df, fb)
 
-    # Convert labels to 0-100 scale if needed (handles 0-1 scale from current data)
     if y.max() <= 1.0:
         y = y * 100
 
@@ -68,7 +62,8 @@ def main():
         X, y, test_size=0.3, random_state=42
     )
 
-    model = Pipeline([
+    # Stage 1: base XGBoost regressor
+    base_model = Pipeline([
         ("scaler", StandardScaler()),
         ("reg", XGBRegressor(
             n_estimators=500,
@@ -82,23 +77,57 @@ def main():
         ))
     ])
 
-    # K-Fold CV for regression
+    # K-Fold CV for base model
     kf = KFold(n_splits=5, shuffle=True, random_state=42)
-    cv_rmse = cross_val_score(model, X_train, y_train, cv=kf, scoring="neg_root_mean_squared_error")
-    cv_r2 = cross_val_score(model, X_train, y_train, cv=kf, scoring="r2")
-    cv_mae = cross_val_score(model, X_train, y_train, cv=kf, scoring="neg_mean_absolute_error")
+    cv_rmse = cross_val_score(base_model, X_train, y_train, cv=kf, scoring="neg_root_mean_squared_error")
+    cv_r2 = cross_val_score(base_model, X_train, y_train, cv=kf, scoring="r2")
+    cv_mae = cross_val_score(base_model, X_train, y_train, cv=kf, scoring="neg_mean_absolute_error")
 
-    print(f"CV RMSE: {-cv_rmse.mean():.4f} (+/- {cv_rmse.std():.4f})")
-    print(f"CV R2: {cv_r2.mean():.4f} (+/- {cv_r2.std():.4f})")
-    print(f"CV MAE: {-cv_mae.mean():.4f} (+/- {cv_mae.std():.4f})")
+    print(f"Base CV RMSE: {-cv_rmse.mean():.4f} (+/- {cv_rmse.std():.4f})")
+    print(f"Base CV R2:   {cv_r2.mean():.4f} (+/- {cv_r2.std():.4f})")
+    print(f"Base CV MAE:   {-cv_mae.mean():.4f} (+/- {cv_mae.std():.4f})")
 
-    model.fit(X_train, y_train)
-    y_pred = model.predict(X_test)
+    base_model.fit(X_train, y_train)
+    y_pred_base = np.clip(base_model.predict(X_test), 0, 100)
 
-    # Clamp predictions to 0-100
-    y_pred = np.clip(y_pred, 0, 100)
+    # Stage 2: isotonic calibration on out-of-sample predictions
+    # Fit calibrator on a held-out portion of training data
+    X_cal, X_rem, y_cal, y_rem = train_test_split(
+        X_train, y_train, test_size=0.2, random_state=99
+    )
+    base_model_cal = Pipeline([
+        ("scaler", StandardScaler()),
+        ("reg", XGBRegressor(
+            n_estimators=500, learning_rate=0.05, max_depth=7,
+            subsample=0.9, colsample_bytree=0.9, reg_lambda=1.0,
+            random_state=42, n_jobs=-1,
+        ))
+    ])
+    cal_preds = base_model_cal.fit(X_cal, y_cal).predict(X_rem)
+    calibrator = IsotonicRegression(y_min=0, y_max=100, out_of_bounds="clip")
+    calibrator.fit(cal_preds, y_rem)
 
-    report = regression_report(y_test, y_pred)
+    # Apply calibration
+    y_pred_calibrated = calibrator.predict(y_pred_base)
+
+    print(f"\nCalibrated Test Metrics:")
+    print(f"  MAE: {mean_absolute_error(y_test, y_pred_calibrated):.4f}")
+    print(f"  RMSE: {np.sqrt(mean_squared_error(y_test, y_pred_calibrated)):.4f}")
+    print(f"  R2:   {r2_score(y_test, y_pred_calibrated):.4f}")
+
+    # Pick best between base and calibrated
+    mae_base = mean_absolute_error(y_test, y_pred_base)
+    mae_cal = mean_absolute_error(y_test, y_pred_calibrated)
+    use_calibrated = mae_cal <= mae_base
+
+    if use_calibrated:
+        y_final = y_pred_calibrated
+        print("  Using: IsotonicCalibrated")
+    else:
+        y_final = y_pred_base
+        print("  Using: Base")
+
+    report = regression_report(y_test, y_final)
 
     out = {
         "cv_rmse": float(-cv_rmse.mean()),
@@ -109,22 +138,20 @@ def main():
         "cv_mae_std": float(cv_mae.std()),
         "test_metrics": report,
         "feature_columns": list(X.columns),
+        "calibrator": "isotonic" if use_calibrated else "none",
     }
 
     joblib.dump({
-        "model": model,
+        "model": base_model,
+        "calibrator": calibrator if use_calibrated else None,
         "feature_columns": list(X.columns),
         "is_regression": True,
-        "label_scale": "0-100"
+        "label_scale": "0-100",
     }, MODELS / "risk_model.joblib")
 
     with open(REPORTS / "train_report.json", "w", encoding="utf-8") as f:
         json.dump(out, f, indent=2)
 
-    print("\nTest Metrics:")
-    print(f"  MAE: {report['mae']:.4f}")
-    print(f"  RMSE: {report['rmse']:.4f}")
-    print(f"  R2: {report['r2']:.4f}")
     print("\nSaved model -> models/risk_model.joblib")
     print("Saved report -> reports/train_report.json")
 

@@ -1,5 +1,17 @@
 from __future__ import annotations
 
+import os
+os.environ.setdefault("HF_TOKEN", "hf_suppress")
+
+import sys
+import warnings
+warnings.filterwarnings("ignore")
+warnings.filterwarnings("ignore", category=UserWarning)
+
+import logging
+logging.basicConfig(level=logging.ERROR)
+logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
+
 import argparse
 from pathlib import Path
 import joblib
@@ -7,6 +19,7 @@ import pandas as pd
 import numpy as np
 
 from .feature_builder import FeatureBuilder
+from .explain import explain_single
 
 ROOT = Path(__file__).resolve().parents[1]
 MODEL_PATH = ROOT / "models" / "risk_model.joblib"
@@ -33,10 +46,12 @@ def main():
     ap.add_argument("--claim", required=True, help="Patent claim text")
     ap.add_argument("--product", required=True, help="Product description text")
     ap.add_argument("--detailed", action="store_true", help="Show detailed breakdown")
+    ap.add_argument("--explain", action="store_true", help="Show SHAP feature explanations")
     args = ap.parse_args()
 
     pack = joblib.load(MODEL_PATH)
     model = pack["model"]
+    calibrator = pack.get("calibrator")
     cols = pack["feature_columns"]
 
     fb = FeatureBuilder()
@@ -45,6 +60,8 @@ def main():
     X = pd.DataFrame([feats]).reindex(columns=cols).fillna(0.0)
     score = float(model.predict(X)[0])
     score = np.clip(score, 0, 100)
+    if calibrator is not None:
+        score = float(calibrator.predict([score])[0])
 
     category = get_risk_category(score)
     semantic_sim = feats["semantic_similarity"]
@@ -56,13 +73,11 @@ def main():
     print(f"Category: {category}")
     print(f"Semantic Similarity: {semantic_sim * 100:.2f}%")
 
-    if args.detailed:
-        print("\n--- Feature Analysis ---")
-        print(f"  Claim word count: {feats['claim_word_count']:.0f}")
-        print(f"  Claim abstraction: {feats['claim_abstraction_score']:.0f}")
-        print(f"  Claim dependency depth: {feats['claim_dep_depth_mean']:.2f}")
-        print(f"  Product components: {feats['prod_component_terms']:.0f}")
-        print(f"  Functional density: {feats['prod_functional_density']:.3f}")
+    if args.explain:
+        print("\n--- SHAP Explanation ---")
+        from .explain import print_explanation
+        result = explain_single(args.claim, args.product, topk=8)
+        print_explanation(result)
 
     print("\n" + "=" * 50)
 
